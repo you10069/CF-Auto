@@ -10,6 +10,7 @@ import os
 import sys
 import platform
 import subprocess
+import shlex
 import requests
 import json
 import csv
@@ -371,6 +372,14 @@ PROGRAM_DIR = PROGRAM_PATH.parent
 def set_program_working_directory():
     """将工作目录切换到程序所在目录"""
     os.chdir(PROGRAM_DIR)
+
+
+def build_command_line(command_parts):
+    """按当前平台安全地拼接命令行参数"""
+    command_parts = [str(part) for part in command_parts]
+    if sys.platform == "win32":
+        return subprocess.list2cmdline(command_parts)
+    return shlex.join(command_parts)
 
 
 def create_timestamped_filename(filename):
@@ -2100,11 +2109,11 @@ def generate_cli_command(mode, ip_version, cfcolo=None, dn_count=None, speed_lim
     
     # 添加模式
     if mode == "beginner":
-        cmd_parts.append("--mode beginner")
+        cmd_parts.extend(["--mode", "beginner"])
     elif mode == "normal":
-        cmd_parts.append("--mode normal")
+        cmd_parts.extend(["--mode", "normal"])
     elif mode == "proxy":
-        cmd_parts.append("--mode proxy")
+        cmd_parts.extend(["--mode", "proxy"])
     
     # 添加IP版本
     if ip_version == "ipv6":
@@ -2112,44 +2121,43 @@ def generate_cli_command(mode, ip_version, cfcolo=None, dn_count=None, speed_lim
     
     # 添加参数
     if dn_count:
-        cmd_parts.append(f"--count {dn_count}")
+        cmd_parts.extend(["--count", str(dn_count)])
     if speed_limit:
-        cmd_parts.append(f"--speed {speed_limit}")
+        cmd_parts.extend(["--speed", str(speed_limit)])
     if time_limit:
-        cmd_parts.append(f"--delay {time_limit}")
+        cmd_parts.extend(["--delay", str(time_limit)])
     if thread_count:
-        cmd_parts.append(f"--thread {thread_count}")
+        cmd_parts.extend(["--thread", str(thread_count)])
     
     # 添加地区码（常规模式）
     if mode == "normal" and cfcolo:
-        cmd_parts.append(f"--region {cfcolo}")
+        cmd_parts.extend(["--region", str(cfcolo)])
     
     # 添加上传配置
     if upload_info:
         if upload_info.get("upload_method") == "api":
-            cmd_parts.append("--upload api")
+            cmd_parts.extend(["--upload", "api"])
             if upload_info.get("worker_domain"):
-                cmd_parts.append(f"--worker-domain {upload_info['worker_domain']}")
+                cmd_parts.extend(["--worker-domain", str(upload_info["worker_domain"])])
             if upload_info.get("uuid"):
-                cmd_parts.append(f"--uuid {upload_info['uuid']}")
+                cmd_parts.extend(["--uuid", str(upload_info["uuid"])])
             if upload_info.get("upload_count"):
-                cmd_parts.append(f"--upload-count {upload_info['upload_count']}")
+                cmd_parts.extend(["--upload-count", str(upload_info["upload_count"])])
             # 如果选择了清空选项，添加 --clear 参数
             if upload_info.get("clear_existing"):
                 cmd_parts.append("--clear")
         elif upload_info.get("upload_method") == "github":
-            cmd_parts.append("--upload github")
+            cmd_parts.extend(["--upload", "github"])
             if upload_info.get("github_token"):
-                # Token较长，使用引号包裹
-                cmd_parts.append(f"--token '{upload_info['github_token']}'")
+                cmd_parts.extend(["--token", str(upload_info["github_token"])])
             if upload_info.get("repo_info"):
-                cmd_parts.append(f"--repo {upload_info['repo_info']}")
+                cmd_parts.extend(["--repo", str(upload_info["repo_info"])])
             if upload_info.get("file_path"):
-                cmd_parts.append(f"--file-path {upload_info['file_path']}")
+                cmd_parts.extend(["--file-path", str(upload_info["file_path"])])
             if upload_info.get("upload_count"):
-                cmd_parts.append(f"--upload-count {upload_info['upload_count']}")
+                cmd_parts.extend(["--upload-count", str(upload_info["upload_count"])])
     
-    return " ".join(cmd_parts)
+    return build_command_line(cmd_parts)
 
 
 def main():
@@ -2339,7 +2347,7 @@ def get_current_command():
         else:
             # 使用绝对路径
             cmd_parts = [script_path] + sys.argv[1:]
-        return ' '.join(cmd_parts)
+        return build_command_line(cmd_parts)
     
     # 交互模式下，返回None（需要从其他地方获取）
     return None
@@ -2649,15 +2657,9 @@ def setup_windows_task():
         script_path = str(PROGRAM_PATH)
         if script_path.endswith('.py'):
             python_exe = get_python_executable()
-            if ' ' in python_exe:
-                python_exe = f'"{python_exe}"'
-            if ' ' in script_path:
-                script_path = f'"{script_path}"'
-            full_command = f"{python_exe} {script_path}"
+            full_command = build_command_line([python_exe, script_path])
         else:
-            if ' ' in script_path:
-                script_path = f'"{script_path}"'
-            full_command = script_path
+            full_command = build_command_line([script_path])
     
     # 根据选择的类型构建 schtasks 命令
     schtasks_cmd = ['schtasks', '/create', '/tn', task_name, '/tr', full_command, '/sc']
